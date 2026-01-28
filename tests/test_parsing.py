@@ -1,7 +1,6 @@
 """Tests for response parsing utilities."""
 from __future__ import annotations
 
-import pytest
 
 from claude_code_model.model import extract_json, ParsedToolCall, extract_tool_calls
 
