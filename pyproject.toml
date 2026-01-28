@@ -5,10 +5,31 @@ description = "Pydantic AI model adapter for Claude Code CLI"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
+authors = [
+    {name = "Aleksandr Bogdanov", email = "aleksandr.bogdanov@example.com"},
+]
+keywords = ["claude", "pydantic-ai", "llm", "agent", "anthropic", "claude-code"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
 dependencies = [
     "pydantic-ai>=0.1.0",
     "pydantic>=2.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/aleksandr-bogdanov/claude-code-model"
+Repository = "https://github.com/aleksandr-bogdanov/claude-code-model"
+Issues = "https://github.com/aleksandr-bogdanov/claude-code-model/issues"
 
 [project.optional-dependencies]
 dev = [
