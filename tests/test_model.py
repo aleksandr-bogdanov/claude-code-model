@@ -1,4 +1,5 @@
 """Tests for Pydantic AI Model adapter."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,19 +16,25 @@ class TestClaudeCodeModel:
 
     @pytest.fixture
     def model(self) -> ClaudeCodeModel:
-        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+        with patch(
+            "claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"
+        ):
             return ClaudeCodeModel()
 
     def test_model_name_default(self, model: ClaudeCodeModel) -> None:
         assert model.model_name == "claude-code:sonnet"
 
     def test_model_name_with_opus(self) -> None:
-        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+        with patch(
+            "claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"
+        ):
             model = ClaudeCodeModel(model="opus")
         assert model.model_name == "claude-code:opus"
 
     def test_model_name_with_haiku(self) -> None:
-        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+        with patch(
+            "claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"
+        ):
             model = ClaudeCodeModel(model="haiku")
         assert model.model_name == "claude-code:haiku"
 
@@ -38,7 +45,9 @@ class TestClaudeCodeModel:
         assert model.timeout == 300
 
     def test_custom_timeout(self) -> None:
-        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+        with patch(
+            "claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"
+        ):
             model = ClaudeCodeModel(timeout=60)
         assert model.timeout == 60
 
@@ -46,7 +55,9 @@ class TestClaudeCodeModel:
         assert isinstance(model._cli, ClaudeCodeCLI)
 
     def test_cli_inherits_config(self) -> None:
-        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+        with patch(
+            "claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"
+        ):
             model = ClaudeCodeModel(model="opus", timeout=120, cwd=Path("/tmp"))
         assert model._cli.model == "opus"
         assert model._cli.timeout == 120
@@ -111,7 +122,9 @@ class TestClaudeCodeModel:
         from pydantic_ai.models import ModelRequestParameters
         from pydantic_ai.tools import ToolDefinition
 
-        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+        with patch(
+            "claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"
+        ):
             model = ClaudeCodeModel()
 
         tool = ToolDefinition(
@@ -170,7 +183,9 @@ class TestClaudeCodeModel:
         from pydantic_ai.models import ModelRequestParameters
         from pydantic_ai.tools import ToolDefinition
 
-        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+        with patch(
+            "claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"
+        ):
             model = ClaudeCodeModel()
 
         tools = [
@@ -225,7 +240,9 @@ class TestBuildPrompt:
 
     @pytest.fixture
     def agent_model(self) -> ClaudeCodeAgentModel:
-        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+        with patch(
+            "claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"
+        ):
             cli = ClaudeCodeCLI()
         return ClaudeCodeAgentModel(
             cli=cli,
@@ -268,9 +285,7 @@ class TestBuildPrompt:
         prompt = agent_model._build_prompt(messages)
         assert "User: Hello" in prompt
 
-    def test_assistant_text_formatted(
-        self, agent_model: ClaudeCodeAgentModel
-    ) -> None:
+    def test_assistant_text_formatted(self, agent_model: ClaudeCodeAgentModel) -> None:
         from pydantic_ai.messages import ModelResponse, TextPart
 
         messages = [ModelResponse(parts=[TextPart(content="Hi there")])]
@@ -281,9 +296,7 @@ class TestBuildPrompt:
         from pydantic_ai.messages import ModelResponse, ToolCallPart
 
         messages = [
-            ModelResponse(
-                parts=[ToolCallPart(tool_name="search", args={"q": "test"})]
-            )
+            ModelResponse(parts=[ToolCallPart(tool_name="search", args={"q": "test"})])
         ]
         prompt = agent_model._build_prompt(messages)
         assert "Assistant called: search" in prompt
@@ -294,9 +307,7 @@ class TestBuildPrompt:
 
         messages = [
             ModelRequest(
-                parts=[
-                    ToolReturnPart(tool_name="search", content="found 3 results")
-                ]
+                parts=[ToolReturnPart(tool_name="search", content="found 3 results")]
             )
         ]
         prompt = agent_model._build_prompt(messages)
@@ -307,7 +318,9 @@ class TestBuildPrompt:
         from pydantic_ai.messages import ModelRequest, UserPromptPart
         from pydantic_ai.tools import ToolDefinition
 
-        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+        with patch(
+            "claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"
+        ):
             cli = ClaudeCodeCLI()
         tool = ToolDefinition(
             name="search",
@@ -333,7 +346,9 @@ class TestBuildPrompt:
         from pydantic_ai.messages import ModelRequest, UserPromptPart
         from pydantic_ai.tools import ToolDefinition
 
-        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+        with patch(
+            "claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"
+        ):
             cli = ClaudeCodeCLI()
         output_tool = ToolDefinition(
             name="final_result",

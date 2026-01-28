@@ -1,4 +1,5 @@
 """Pydantic AI Model implementation."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -145,7 +146,7 @@ def extract_tool_calls(content: str) -> list[ParsedToolCall]:
     calls: list[ParsedToolCall] = []
 
     # Pattern 1: TOOL_CALL: name({...})
-    pattern1 = r'TOOL_CALL:\s*(\w+)\((\{.*?\})\)'
+    pattern1 = r"TOOL_CALL:\s*(\w+)\((\{.*?\})\)"
     for match in re.finditer(pattern1, content, re.DOTALL):
         name = match.group(1)
         args_str = match.group(2)

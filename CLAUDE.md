@@ -270,6 +270,27 @@ def extract_json(content: str) -> dict[str, Any] | None:
 8. Limitations
 9. License
 
+## Pre-Commit Validation
+
+**IMPORTANT**: Run these checks before every commit to ensure CI will pass:
+
+```bash
+# Quick validation (run before every commit)
+uv run ruff format src/ tests/        # Format code
+uv run ruff check src/ tests/         # Lint
+uv run mypy src/                      # Type check
+uv run pytest                         # Run tests
+
+# Full validation (run before releases)
+uv build                              # Build package
+uv run twine check dist/*             # Verify package metadata
+```
+
+One-liner for quick pre-commit check:
+```bash
+uv run ruff format src/ tests/ && uv run ruff check src/ tests/ && uv run mypy src/ && uv run pytest
+```
+
 ## PR Guidelines
 
 - One logical change per PR
@@ -277,6 +298,7 @@ def extract_json(content: str) -> dict[str, Any] | None:
 - Tests for new functionality
 - Update README if adding features
 - Run full test suite before submitting
+- **Run pre-commit validation before pushing**
 
 ## Don'ts
 

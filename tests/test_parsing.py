@@ -1,4 +1,5 @@
 """Tests for response parsing utilities."""
+
 from __future__ import annotations
 
 
@@ -119,25 +120,25 @@ class TestExtractToolCalls:
         assert calls[0].args == {"query": "python"}
 
     def test_xml_format_with_whitespace(self) -> None:
-        content = '''<tool_call name="search">
+        content = """<tool_call name="search">
             {"query": "test"}
-        </tool_call>'''
+        </tool_call>"""
         calls = extract_tool_calls(content)
         assert len(calls) == 1
         assert calls[0].args == {"query": "test"}
 
     # Multiple calls
     def test_multiple_tool_calls_same_format(self) -> None:
-        content = '''TOOL_CALL: first({"a": 1})
-        TOOL_CALL: second({"b": 2})'''
+        content = """TOOL_CALL: first({"a": 1})
+        TOOL_CALL: second({"b": 2})"""
         calls = extract_tool_calls(content)
         assert len(calls) == 2
         assert calls[0].name == "first"
         assert calls[1].name == "second"
 
     def test_multiple_tool_calls_mixed_formats(self) -> None:
-        content = '''TOOL_CALL: func1({"x": 1})
-        <tool_call name="func2">{"y": 2}</tool_call>'''
+        content = """TOOL_CALL: func1({"x": 1})
+        <tool_call name="func2">{"y": 2}</tool_call>"""
         calls = extract_tool_calls(content)
         assert len(calls) == 2
 
@@ -149,11 +150,11 @@ class TestExtractToolCalls:
         assert extract_tool_calls("") == []
 
     def test_invalid_json_skipped(self) -> None:
-        content = 'TOOL_CALL: bad({not valid json})'
+        content = "TOOL_CALL: bad({not valid json})"
         assert extract_tool_calls(content) == []
 
     def test_partial_match_ignored(self) -> None:
-        content = 'TOOL_CALL: incomplete('
+        content = "TOOL_CALL: incomplete("
         assert extract_tool_calls(content) == []
 
     def test_tool_call_with_nested_json(self) -> None:

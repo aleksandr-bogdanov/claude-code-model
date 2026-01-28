@@ -1,4 +1,5 @@
 """CLI wrapper for Claude Code."""
+
 from __future__ import annotations
 
 import asyncio
