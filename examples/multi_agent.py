@@ -36,24 +36,30 @@ class AnalysisResult(BaseModel):
 
 # --- Agents ---
 
+# Enable verbose logging to debug multi-agent interactions
+# Set to False to disable debug output
+VERBOSE = True
+
 # Fast agent for quick research tasks (uses haiku)
 researcher: Agent[None, ResearchResult] = Agent(
-    ClaudeCodeModel(model="haiku"),
+    ClaudeCodeModel(model="haiku", verbose=VERBOSE),
     output_type=ResearchResult,
     system_prompt=(
         "You are a research assistant. When given a topic, provide "
         "key points and a brief summary. Be factual and concise."
     ),
+    retries=5,  # Allow retries for output validation
 )
 
 # Powerful agent for complex analysis (uses sonnet)
 analyst: Agent[None, AnalysisResult] = Agent(
-    ClaudeCodeModel(model="sonnet"),
+    ClaudeCodeModel(model="sonnet", verbose=VERBOSE),
     output_type=AnalysisResult,
     system_prompt=(
         "You are a senior analyst. Analyze research findings and provide "
         "actionable recommendations. Consider multiple perspectives."
     ),
+    retries=5,  # Allow retries for output validation
 )
 
 

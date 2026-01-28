@@ -95,12 +95,12 @@ class TestClaudeCodeCLIInit:
             cli = ClaudeCodeCLI(model="opus")
             assert cli.model == "opus"
 
-    def test_default_timeout_300(self) -> None:
+    def test_default_timeout_30(self) -> None:
         with patch(
             "claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"
         ):
             cli = ClaudeCodeCLI()
-            assert cli.timeout == 300
+            assert cli.timeout == 30
 
     def test_custom_timeout(self) -> None:
         with patch(
@@ -179,6 +179,22 @@ class TestClaudeCodeCLIRun:
         assert "sonnet" in args
 
     @pytest.mark.asyncio
+    async def test_command_includes_no_session_persistence(
+        self, cli: ClaudeCodeCLI
+    ) -> None:
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (b"out", b"")
+        mock_proc.returncode = 0
+
+        with patch(
+            "asyncio.create_subprocess_exec", return_value=mock_proc
+        ) as mock_exec:
+            await cli.run("test")
+
+        args = mock_exec.call_args[0]
+        assert "--no-session-persistence" in args
+
+    @pytest.mark.asyncio
     async def test_custom_model_in_command(self) -> None:
         with patch(
             "claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"
@@ -251,5 +267,6 @@ class TestClaudeCodeCLIRun:
         kwargs = mock_exec.call_args[1]
         import asyncio.subprocess
 
+        assert kwargs["stdin"] == asyncio.subprocess.DEVNULL  # Prevents hang in non-TTY
         assert kwargs["stdout"] == asyncio.subprocess.PIPE
         assert kwargs["stderr"] == asyncio.subprocess.PIPE

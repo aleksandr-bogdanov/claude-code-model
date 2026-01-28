@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
+import logging
 from pathlib import Path
 import re
 from typing import Any, Literal
@@ -22,6 +23,8 @@ from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.usage import RequestUsage
 
 from claude_code_model.cli import ClaudeCodeCLI
+
+logger = logging.getLogger(__name__)
 
 
 def extract_json(content: str) -> dict[str, Any] | None:
@@ -173,28 +176,68 @@ class ClaudeCodeModel(Model):
     model: Literal["sonnet", "opus", "haiku"]
     timeout: int
     cwd: Path | None
+    verbose: bool
     _cli: ClaudeCodeCLI = field(repr=False)
     _model_name: str = field(repr=False)
+    _request_count: int = field(repr=False, default=0)
+    _total_time: float = field(repr=False, default=0.0)
 
     def __init__(
         self,
         *,
         model: Literal["sonnet", "opus", "haiku"] = "sonnet",
-        timeout: int = 300,
+        timeout: int = 30,  # Default 30 seconds per request
         cwd: Path | None = None,
+        verbose: bool = False,
         settings: ModelSettings | None = None,
     ) -> None:
-        """Initialize Claude Code Model."""
+        """
+        Initialize Claude Code Model.
+
+        Args:
+            model: Which Claude model to use (sonnet, opus, haiku)
+            timeout: Maximum time to wait for CLI response in seconds (default 30)
+            cwd: Working directory for CLI execution
+            verbose: If True, enable debug logging of prompts and responses
+            settings: Optional Pydantic AI model settings
+        """
         self.model = model
         self.timeout = timeout
         self.cwd = cwd
+        self.verbose = verbose
         self._cli = ClaudeCodeCLI(
             model=model,
             timeout=timeout,
             cwd=cwd,
+            verbose=verbose,
         )
         self._model_name = f"claude-code:{model}"
+        self._request_count = 0
+        self._total_time = 0.0
+        if verbose:
+            logger.setLevel(logging.DEBUG)
+            if not logger.handlers:
+                handler = logging.StreamHandler()
+                handler.setFormatter(
+                    logging.Formatter("[%(name)s] %(levelname)s: %(message)s")
+                )
+                logger.addHandler(handler)
         super().__init__(settings=settings)
+
+    @property
+    def request_count(self) -> int:
+        """Number of CLI requests made."""
+        return self._request_count
+
+    @property
+    def total_time(self) -> float:
+        """Total time spent in CLI requests (seconds)."""
+        return self._total_time
+
+    def reset_stats(self) -> None:
+        """Reset request count and timing stats."""
+        self._request_count = 0
+        self._total_time = 0.0
 
     @property
     def model_name(self) -> str:
@@ -233,22 +276,90 @@ class ClaudeCodeModel(Model):
             model_request_parameters,
         )
 
+        self._request_count += 1
+        request_num = self._request_count
+
+        if self.verbose:
+            logger.debug("=" * 60)
+            logger.debug(
+                "REQUEST #%d (total time so far: %.1fs)",
+                request_num,
+                self._total_time,
+            )
+            logger.debug("=" * 60)
+            logger.debug("Building prompt from %d messages", len(messages))
+            if model_request_parameters.function_tools:
+                available_tools = [
+                    t.name for t in model_request_parameters.function_tools
+                ]
+                logger.debug("Available tools: %s", available_tools)
+            if model_request_parameters.output_tools:
+                logger.debug(
+                    "Output schema: %s",
+                    model_request_parameters.output_tools[0].name
+                    if model_request_parameters.output_tools
+                    else "None",
+                )
+
         prompt = self._build_prompt(messages, model_request_parameters)
         result = await self._cli.run(prompt)
+        self._total_time += result.elapsed_seconds
 
         parts: list[ModelResponsePart] = []
 
         # Check for tool calls first
         tool_calls = extract_tool_calls(result.stdout)
+
+        if self.verbose:
+            logger.debug("Parsing response for tool calls...")
+            logger.debug("Found %d potential tool call(s)", len(tool_calls))
+            for tc in tool_calls:
+                logger.debug("  - Tool: %s, Args: %s", tc.name, tc.args)
+
         if tool_calls and model_request_parameters.function_tools:
             tool_names = {t.name for t in model_request_parameters.function_tools}
             for tc in tool_calls:
                 if tc.name in tool_names:
+                    if self.verbose:
+                        logger.debug("Valid tool call: %s", tc.name)
                     parts.append(ToolCallPart(tool_name=tc.name, args=tc.args))
+                elif self.verbose:
+                    logger.debug(
+                        "Ignoring unknown tool: %s (available: %s)", tc.name, tool_names
+                    )
 
         # If no valid tool calls, return text
         if not parts:
-            parts.append(TextPart(content=result.stdout))
+            content = result.stdout
+            # If structured output is expected, try to extract just the JSON
+            if model_request_parameters.output_tools:
+                extracted = extract_json(content)
+                if extracted is not None:
+                    content = json.dumps(extracted)
+                    if self.verbose:
+                        logger.debug("Extracted JSON for structured output")
+                elif self.verbose:
+                    logger.debug(
+                        "Could not extract JSON from response, returning raw text"
+                    )
+            elif self.verbose:
+                logger.debug("No valid tool calls found, returning text response")
+            parts.append(TextPart(content=content))
+
+        if self.verbose:
+            logger.debug("Response parts: %d", len(parts))
+            for i, part in enumerate(parts):
+                if isinstance(part, TextPart):
+                    logger.debug("  Part %d: TextPart (%d chars)", i, len(part.content))
+                elif isinstance(part, ToolCallPart):
+                    logger.debug("  Part %d: ToolCallPart(%s)", i, part.tool_name)
+            logger.debug(
+                "Request #%d completed in %.1fs (total: %d requests, %.1fs)",
+                request_num,
+                result.elapsed_seconds,
+                self._request_count,
+                self._total_time,
+            )
 
         return ModelResponse(
             parts=parts,
@@ -317,12 +428,47 @@ class ClaudeCodeModel(Model):
 
     def _format_tools(self, tools: list[ToolDefinition]) -> str:
         """Format tool definitions for prompt."""
-        lines = []
+        lines = [
+            "You have access to the following tools. When you need to use a tool, "
+            "you MUST output the tool call using EXACTLY this format:",
+            "",
+            'TOOL_CALL: tool_name({"param": "value"})',
+            "",
+            "IMPORTANT RULES:",
+            "1. The tool call must be on its own line",
+            "2. You can include brief text BEFORE the tool call to explain your reasoning",
+            "3. After outputting TOOL_CALL, you MUST STOP IMMEDIATELY",
+            "4. Do NOT simulate or imagine what the tool response might be",
+            "5. Do NOT continue the conversation after TOOL_CALL",
+            "6. Just output the TOOL_CALL line and nothing after it",
+            "",
+            "Available tools:",
+            "",
+        ]
         for tool in tools:
             lines.append(f"### {tool.name}")
-            lines.append(f"{tool.description}")
-            lines.append(f"Parameters: {json.dumps(tool.parameters_json_schema)}")
-            lines.append(f"To call: TOOL_CALL: {tool.name}({{...}})")
+            lines.append(f"Description: {tool.description}")
+            params = tool.parameters_json_schema
+            if params.get("properties"):
+                lines.append("Parameters:")
+                for pname, pinfo in params["properties"].items():
+                    required = pname in params.get("required", [])
+                    req_str = " (required)" if required else " (optional)"
+                    ptype = pinfo.get("type", "any")
+                    pdesc = pinfo.get("description", "")
+                    lines.append(f"  - {pname}: {ptype}{req_str} - {pdesc}")
+            else:
+                lines.append("Parameters: none")
+            # Add example
+            example_args: dict[str, Any] = {}
+            for pname, pinfo in params.get("properties", {}).items():
+                if pinfo.get("type") == "string":
+                    example_args[pname] = f"<{pname}>"
+                elif pinfo.get("type") == "number":
+                    example_args[pname] = 0
+                elif pinfo.get("type") == "boolean":
+                    example_args[pname] = True
+            lines.append(f"Example: TOOL_CALL: {tool.name}({json.dumps(example_args)})")
             lines.append("")
         return "\n".join(lines)
 
@@ -331,7 +477,15 @@ class ClaudeCodeModel(Model):
         if not tools:
             return ""
         tool = tools[0]  # Use first output tool
-        return f"Return JSON matching this schema:\n{json.dumps(tool.parameters_json_schema, indent=2)}"
+        lines = [
+            "You MUST respond with a valid JSON object matching this schema.",
+            "Output ONLY the JSON - no markdown code blocks, no explanation before or after.",
+            "If you need to use a tool first, do that instead of returning JSON.",
+            "",
+            "Schema:",
+            json.dumps(tool.parameters_json_schema, indent=2),
+        ]
+        return "\n".join(lines)
 
 
 # Keep ClaudeCodeAgentModel for backwards compatibility if needed

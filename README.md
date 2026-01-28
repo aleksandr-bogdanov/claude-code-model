@@ -124,10 +124,26 @@ from pathlib import Path
 
 model = ClaudeCodeModel(
     model="sonnet",      # "sonnet" | "opus" | "haiku"
-    timeout=300,         # seconds
+    timeout=30,          # seconds per CLI request (default: 30)
     cwd=Path("/path"),   # working directory for CLI
+    verbose=False,       # enable debug logging
 )
 ```
+
+### Debug Mode
+
+Enable verbose logging to see exactly what's happening:
+
+```python
+model = ClaudeCodeModel(verbose=True)
+```
+
+This shows:
+- Request/response timing (e.g., `CLAUDE CLI RESPONSE (took 3.7s)`)
+- Full prompts being sent
+- Tool calls detected
+- JSON extraction status
+- Request count and total time
 
 ## Examples
 
@@ -195,9 +211,17 @@ Main model class implementing Pydantic AI's `Model` interface.
 @dataclass
 class ClaudeCodeModel(Model):
     model: Literal["sonnet", "opus", "haiku"] = "sonnet"
-    timeout: int = 300  # seconds
+    timeout: int = 30       # seconds per request
     cwd: Path | None = None
+    verbose: bool = False   # enable debug logging
 ```
+
+**Properties** (read-only, for monitoring):
+- `request_count: int` - Number of CLI requests made
+- `total_time: float` - Total seconds spent in CLI requests
+
+**Methods**:
+- `reset_stats()` - Reset request_count and total_time to zero
 
 ### Exceptions
 
@@ -217,6 +241,44 @@ from claude_code_model import (
 - **No concurrent calls**: Run one request at a time
 - **Text-only**: No image inputs (CLI limitation)
 - **Rate limits**: Subject to Claude Max rate limits
+
+## Known Behaviors
+
+### Tool Calling is Prompt-Based
+
+Unlike the API, Claude CLI doesn't have native tool calling. This adapter simulates tools by:
+
+1. Including tool definitions in the prompt with format instructions
+2. Asking Claude to output `TOOL_CALL: name({"arg": "value"})`
+3. Parsing the response for this pattern
+
+This works well but Claude occasionally:
+- Ignores tools and answers directly
+- Outputs the tool call but continues talking
+- Returns placeholder JSON instead of real content
+
+**Mitigation**: Use `retries=5` on your Agent to handle occasional misbehavior:
+
+```python
+agent = Agent(
+    ClaudeCodeModel(),
+    output_type=MyResult,
+    retries=5,  # Allow retries for output validation
+)
+```
+
+### Response Timing
+
+Each CLI invocation takes 2-10 seconds depending on:
+- Model (haiku is fastest, opus slowest)
+- Prompt length
+- Claude's current load
+
+Multi-agent workflows with tool calls require multiple CLI invocations, so expect 15-30+ seconds for complex tasks.
+
+### IDE Compatibility
+
+The adapter works in both terminal and IDE environments. It uses `stdin=DEVNULL` to prevent hangs when running without a TTY (common in IDEs like PyCharm).
 
 ## Development
 
@@ -280,5 +342,4 @@ This is an unofficial adapter, not affiliated with Anthropic. Use in accordance 
 ## Support
 
 - Issues: [GitHub Issues](https://github.com/yourusername/claude-code-model/issues)
-- Docs: [SPEC.md](SPEC.md) for technical details
 - Dev Guide: [CLAUDE.md](CLAUDE.md) for contributors
