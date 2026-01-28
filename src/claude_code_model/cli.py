@@ -1,7 +1,9 @@
 """CLI wrapper for Claude Code."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+import shutil
+from dataclasses import dataclass, field
+from pathlib import Path
 
 
 class ClaudeCodeError(Exception):
@@ -40,3 +42,23 @@ class CLIResult:
     def success(self) -> bool:
         """Return True if command exited with code 0."""
         return self.exit_code == 0
+
+
+@dataclass
+class ClaudeCodeCLI:
+    """Wrapper for Claude Code CLI."""
+
+    model: str = "sonnet"
+    timeout: int = 300
+    cwd: Path | None = None
+    _executable: Path = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Find and validate claude executable."""
+        claude_path = shutil.which("claude")
+        if claude_path is None:
+            raise ClaudeCodeNotFoundError(
+                "claude CLI not found. "
+                "Install with: npm install -g @anthropic-ai/claude-code"
+            )
+        self._executable = Path(claude_path)

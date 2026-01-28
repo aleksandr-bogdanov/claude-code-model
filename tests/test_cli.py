@@ -3,8 +3,12 @@ from __future__ import annotations
 
 import pytest
 
+from pathlib import Path
+from unittest.mock import patch
+
 from claude_code_model.cli import (
     CLIResult,
+    ClaudeCodeCLI,
     ClaudeCodeError,
     ClaudeCodeExecutionError,
     ClaudeCodeNotFoundError,
@@ -57,3 +61,48 @@ class TestCLIResult:
         assert result.stdout == "out"
         assert result.stderr == "err"
         assert result.exit_code == 0
+
+
+class TestClaudeCodeCLIInit:
+    """Test ClaudeCodeCLI initialization."""
+
+    def test_finds_claude_executable(self) -> None:
+        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+            cli = ClaudeCodeCLI()
+            assert cli._executable == Path("/usr/bin/claude")
+
+    def test_raises_when_not_found(self) -> None:
+        with patch("claude_code_model.cli.shutil.which", return_value=None):
+            with pytest.raises(ClaudeCodeNotFoundError) as exc_info:
+                ClaudeCodeCLI()
+            assert "not found" in str(exc_info.value).lower()
+
+    def test_default_model_is_sonnet(self) -> None:
+        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+            cli = ClaudeCodeCLI()
+            assert cli.model == "sonnet"
+
+    def test_custom_model(self) -> None:
+        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+            cli = ClaudeCodeCLI(model="opus")
+            assert cli.model == "opus"
+
+    def test_default_timeout_300(self) -> None:
+        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+            cli = ClaudeCodeCLI()
+            assert cli.timeout == 300
+
+    def test_custom_timeout(self) -> None:
+        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+            cli = ClaudeCodeCLI(timeout=60)
+            assert cli.timeout == 60
+
+    def test_default_cwd_is_none(self) -> None:
+        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+            cli = ClaudeCodeCLI()
+            assert cli.cwd is None
+
+    def test_custom_cwd(self) -> None:
+        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+            cli = ClaudeCodeCLI(cwd=Path("/tmp/project"))
+            assert cli.cwd == Path("/tmp/project")
