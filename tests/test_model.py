@@ -80,3 +80,141 @@ class TestClaudeCodeModel:
     @pytest.mark.asyncio
     async def test_supported_builtin_tools(self) -> None:
         assert ClaudeCodeModel.supported_builtin_tools() == frozenset()
+
+    @pytest.mark.asyncio
+    async def test_request_returns_usage_with_zero_tokens(
+        self, model: ClaudeCodeModel
+    ) -> None:
+        from pydantic_ai.messages import ModelRequest, UserPromptPart
+        from pydantic_ai.models import ModelRequestParameters
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (b"response", b"")
+        mock_proc.returncode = 0
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            messages = [ModelRequest(parts=[UserPromptPart(content="Hi")])]
+            params = ModelRequestParameters(
+                function_tools=[],
+                output_tools=None,
+                allow_text_output=True,
+                output_mode="text",
+            )
+            response = await model.request(messages, None, params)
+
+        assert response.usage.input_tokens == 0
+        assert response.usage.output_tokens == 0
+
+    @pytest.mark.asyncio
+    async def test_detects_tool_call_in_response(self) -> None:
+        from pydantic_ai.messages import ModelRequest, ToolCallPart, UserPromptPart
+        from pydantic_ai.models import ModelRequestParameters
+        from pydantic_ai.tools import ToolDefinition
+
+        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+            model = ClaudeCodeModel()
+
+        tool = ToolDefinition(
+            name="search",
+            description="Search",
+            parameters_json_schema={"type": "object"},
+        )
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (
+            b'TOOL_CALL: search({"query": "test"})',
+            b"",
+        )
+        mock_proc.returncode = 0
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            messages = [ModelRequest(parts=[UserPromptPart(content="Search")])]
+            params = ModelRequestParameters(
+                function_tools=[tool],
+                output_tools=None,
+                allow_text_output=True,
+                output_mode="text",
+            )
+            response = await model.request(messages, None, params)
+
+        assert len(response.parts) == 1
+        assert isinstance(response.parts[0], ToolCallPart)
+        assert response.parts[0].tool_name == "search"
+
+    @pytest.mark.asyncio
+    async def test_ignores_unknown_tool_call(self, model: ClaudeCodeModel) -> None:
+        from pydantic_ai.messages import ModelRequest, TextPart, UserPromptPart
+        from pydantic_ai.models import ModelRequestParameters
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (b'TOOL_CALL: unknown_tool({"a": 1})', b"")
+        mock_proc.returncode = 0
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            messages = [ModelRequest(parts=[UserPromptPart(content="Test")])]
+            params = ModelRequestParameters(
+                function_tools=[],
+                output_tools=None,
+                allow_text_output=True,
+                output_mode="text",
+            )
+            response = await model.request(messages, None, params)
+
+        # Should fall back to text since tool not in function_tools
+        assert len(response.parts) == 1
+        assert isinstance(response.parts[0], TextPart)
+
+    @pytest.mark.asyncio
+    async def test_handles_multiple_tool_calls(self) -> None:
+        from pydantic_ai.messages import ModelRequest, ToolCallPart, UserPromptPart
+        from pydantic_ai.models import ModelRequestParameters
+        from pydantic_ai.tools import ToolDefinition
+
+        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+            model = ClaudeCodeModel()
+
+        tools = [
+            ToolDefinition(name="tool1", description="T1", parameters_json_schema={}),
+            ToolDefinition(name="tool2", description="T2", parameters_json_schema={}),
+        ]
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (
+            b'TOOL_CALL: tool1({"a": 1})\nTOOL_CALL: tool2({"b": 2})',
+            b"",
+        )
+        mock_proc.returncode = 0
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            messages = [ModelRequest(parts=[UserPromptPart(content="Test")])]
+            params = ModelRequestParameters(
+                function_tools=tools,
+                output_tools=None,
+                allow_text_output=True,
+                output_mode="text",
+            )
+            response = await model.request(messages, None, params)
+
+        assert len(response.parts) == 2
+        assert all(isinstance(p, ToolCallPart) for p in response.parts)
+
+    @pytest.mark.asyncio
+    async def test_returns_model_response_type(self, model: ClaudeCodeModel) -> None:
+        from pydantic_ai.messages import ModelRequest, ModelResponse, UserPromptPart
+        from pydantic_ai.models import ModelRequestParameters
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (b"test", b"")
+        mock_proc.returncode = 0
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            messages = [ModelRequest(parts=[UserPromptPart(content="Hi")])]
+            params = ModelRequestParameters(
+                function_tools=[],
+                output_tools=None,
+                allow_text_output=True,
+                output_mode="text",
+            )
+            response = await model.request(messages, None, params)
+
+        assert isinstance(response, ModelResponse)
