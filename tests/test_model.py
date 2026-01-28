@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from claude_code_model.cli import ClaudeCodeCLI
-from claude_code_model.model import ClaudeCodeModel
+from claude_code_model.model import ClaudeCodeAgentModel, ClaudeCodeModel
 
 
 class TestClaudeCodeModel:
@@ -218,3 +218,171 @@ class TestClaudeCodeModel:
             response = await model.request(messages, None, params)
 
         assert isinstance(response, ModelResponse)
+
+
+class TestBuildPrompt:
+    """Test _build_prompt method."""
+
+    @pytest.fixture
+    def agent_model(self) -> ClaudeCodeAgentModel:
+        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+            cli = ClaudeCodeCLI()
+        return ClaudeCodeAgentModel(
+            cli=cli,
+            function_tools=[],
+            allow_text_result=True,
+            result_tools=[],
+        )
+
+    def test_system_prompt_in_instructions(
+        self, agent_model: ClaudeCodeAgentModel
+    ) -> None:
+        from pydantic_ai.messages import ModelRequest, SystemPromptPart
+
+        messages = [ModelRequest(parts=[SystemPromptPart(content="Be helpful.")])]
+        prompt = agent_model._build_prompt(messages)
+        assert "## Instructions" in prompt
+        assert "Be helpful." in prompt
+
+    def test_multiple_system_prompts_combined(
+        self, agent_model: ClaudeCodeAgentModel
+    ) -> None:
+        from pydantic_ai.messages import ModelRequest, SystemPromptPart
+
+        messages = [
+            ModelRequest(
+                parts=[
+                    SystemPromptPart(content="Rule 1"),
+                    SystemPromptPart(content="Rule 2"),
+                ]
+            )
+        ]
+        prompt = agent_model._build_prompt(messages)
+        assert "Rule 1" in prompt
+        assert "Rule 2" in prompt
+
+    def test_user_prompt_formatted(self, agent_model: ClaudeCodeAgentModel) -> None:
+        from pydantic_ai.messages import ModelRequest, UserPromptPart
+
+        messages = [ModelRequest(parts=[UserPromptPart(content="Hello")])]
+        prompt = agent_model._build_prompt(messages)
+        assert "User: Hello" in prompt
+
+    def test_assistant_text_formatted(
+        self, agent_model: ClaudeCodeAgentModel
+    ) -> None:
+        from pydantic_ai.messages import ModelResponse, TextPart
+
+        messages = [ModelResponse(parts=[TextPart(content="Hi there")])]
+        prompt = agent_model._build_prompt(messages)
+        assert "Assistant: Hi there" in prompt
+
+    def test_tool_call_formatted(self, agent_model: ClaudeCodeAgentModel) -> None:
+        from pydantic_ai.messages import ModelResponse, ToolCallPart
+
+        messages = [
+            ModelResponse(
+                parts=[ToolCallPart(tool_name="search", args={"q": "test"})]
+            )
+        ]
+        prompt = agent_model._build_prompt(messages)
+        assert "Assistant called: search" in prompt
+        assert '"q"' in prompt
+
+    def test_tool_return_formatted(self, agent_model: ClaudeCodeAgentModel) -> None:
+        from pydantic_ai.messages import ModelRequest, ToolReturnPart
+
+        messages = [
+            ModelRequest(
+                parts=[
+                    ToolReturnPart(tool_name="search", content="found 3 results")
+                ]
+            )
+        ]
+        prompt = agent_model._build_prompt(messages)
+        assert "Tool Result (search):" in prompt
+        assert "found 3 results" in prompt
+
+    def test_tools_section_when_tools_provided(self) -> None:
+        from pydantic_ai.messages import ModelRequest, UserPromptPart
+        from pydantic_ai.tools import ToolDefinition
+
+        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+            cli = ClaudeCodeCLI()
+        tool = ToolDefinition(
+            name="search",
+            description="Search for files",
+            parameters_json_schema={
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+            },
+        )
+        agent_model = ClaudeCodeAgentModel(
+            cli=cli,
+            function_tools=[tool],
+            allow_text_result=True,
+            result_tools=[],
+        )
+        messages = [ModelRequest(parts=[UserPromptPart(content="Find files")])]
+        prompt = agent_model._build_prompt(messages)
+        assert "## Available Tools" in prompt
+        assert "search" in prompt
+        assert "Search for files" in prompt
+
+    def test_result_schema_section_when_result_tools(self) -> None:
+        from pydantic_ai.messages import ModelRequest, UserPromptPart
+        from pydantic_ai.tools import ToolDefinition
+
+        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+            cli = ClaudeCodeCLI()
+        result_tool = ToolDefinition(
+            name="final_result",
+            description="Return structured result",
+            parameters_json_schema={
+                "type": "object",
+                "properties": {"answer": {"type": "string"}},
+            },
+        )
+        agent_model = ClaudeCodeAgentModel(
+            cli=cli,
+            function_tools=[],
+            allow_text_result=False,
+            result_tools=[result_tool],
+        )
+        messages = [ModelRequest(parts=[UserPromptPart(content="Analyze")])]
+        prompt = agent_model._build_prompt(messages)
+        assert "## Required Output Format" in prompt
+
+    def test_conversation_section_present(
+        self, agent_model: ClaudeCodeAgentModel
+    ) -> None:
+        from pydantic_ai.messages import ModelRequest, UserPromptPart
+
+        messages = [ModelRequest(parts=[UserPromptPart(content="Hello")])]
+        prompt = agent_model._build_prompt(messages)
+        assert "## Conversation" in prompt
+
+    def test_full_conversation_flow(self, agent_model: ClaudeCodeAgentModel) -> None:
+        from pydantic_ai.messages import (
+            ModelRequest,
+            ModelResponse,
+            SystemPromptPart,
+            TextPart,
+            UserPromptPart,
+        )
+
+        messages = [
+            ModelRequest(
+                parts=[
+                    SystemPromptPart(content="You are helpful."),
+                    UserPromptPart(content="What is 2+2?"),
+                ]
+            ),
+            ModelResponse(parts=[TextPart(content="4")]),
+            ModelRequest(parts=[UserPromptPart(content="Thanks!")]),
+        ]
+        prompt = agent_model._build_prompt(messages)
+        assert "You are helpful." in prompt
+        assert "User: What is 2+2?" in prompt
+        assert "Assistant: 4" in prompt
+        assert "User: Thanks!" in prompt

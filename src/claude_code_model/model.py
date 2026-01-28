@@ -336,9 +336,81 @@ class ClaudeCodeModel(Model):
 # Keep ClaudeCodeAgentModel for backwards compatibility if needed
 @dataclass
 class ClaudeCodeAgentModel:
-    """Deprecated: Use ClaudeCodeModel directly."""
+    """Agent model for handling message conversion and CLI requests."""
 
     cli: ClaudeCodeCLI
-    _function_tools: list[ToolDefinition] = field(default_factory=list)
-    _allow_text_result: bool = True
-    _result_tools: list[ToolDefinition] = field(default_factory=list)
+    function_tools: list[ToolDefinition] = field(default_factory=list)
+    allow_text_result: bool = True
+    result_tools: list[ToolDefinition] = field(default_factory=list)
+
+    def _build_prompt(self, messages: list[ModelMessage]) -> str:
+        """Convert Pydantic AI messages to prompt string."""
+        from pydantic_ai.messages import (
+            ModelRequest,
+            RetryPromptPart,
+            SystemPromptPart,
+            ToolReturnPart,
+            UserPromptPart,
+        )
+
+        sections: list[str] = []
+        system_parts: list[str] = []
+        conversation_parts: list[str] = []
+
+        for msg in messages:
+            if isinstance(msg, ModelRequest):
+                for req_part in msg.parts:
+                    if isinstance(req_part, SystemPromptPart):
+                        system_parts.append(req_part.content)
+                    elif isinstance(req_part, UserPromptPart):
+                        conversation_parts.append(f"User: {req_part.content}")
+                    elif isinstance(req_part, ToolReturnPart):
+                        conversation_parts.append(
+                            f"Tool Result ({req_part.tool_name}): {req_part.content}"
+                        )
+                    elif isinstance(req_part, RetryPromptPart):
+                        conversation_parts.append(f"Retry: {req_part.content}")
+            elif isinstance(msg, ModelResponse):
+                for resp_part in msg.parts:
+                    if isinstance(resp_part, TextPart):
+                        conversation_parts.append(f"Assistant: {resp_part.content}")
+                    elif isinstance(resp_part, ToolCallPart):
+                        args_json = json.dumps(resp_part.args)
+                        conversation_parts.append(
+                            f"Assistant called: {resp_part.tool_name}({args_json})"
+                        )
+
+        # Build sections
+        if system_parts:
+            sections.append("## Instructions\n" + "\n".join(system_parts))
+
+        if self.function_tools:
+            tools_text = self._format_tools(self.function_tools)
+            sections.append("## Available Tools\n" + tools_text)
+
+        if self.result_tools:
+            schema_text = self._format_result_schema(self.result_tools)
+            sections.append("## Required Output Format\n" + schema_text)
+
+        if conversation_parts:
+            sections.append("## Conversation\n" + "\n".join(conversation_parts))
+
+        return "\n\n".join(sections)
+
+    def _format_tools(self, tools: list[ToolDefinition]) -> str:
+        """Format tool definitions for prompt."""
+        lines = []
+        for tool in tools:
+            lines.append(f"### {tool.name}")
+            lines.append(f"{tool.description}")
+            lines.append(f"Parameters: {json.dumps(tool.parameters_json_schema)}")
+            lines.append(f"To call: TOOL_CALL: {tool.name}({{...}})")
+            lines.append("")
+        return "\n".join(lines)
+
+    def _format_result_schema(self, tools: list[ToolDefinition]) -> str:
+        """Format result schema for prompt."""
+        if not tools:
+            return ""
+        tool = tools[0]  # Use first result tool
+        return f"Return JSON matching this schema:\n{json.dumps(tool.parameters_json_schema, indent=2)}"
