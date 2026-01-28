@@ -1,6 +1,7 @@
 """Pydantic AI Model implementation."""
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 import re
 from typing import Any
@@ -101,3 +102,48 @@ def _find_json_object(content: str) -> str | None:
                 return content[start : i + 1]
 
     return None
+
+
+@dataclass
+class ParsedToolCall:
+    """Parsed tool call from model response."""
+
+    name: str
+    args: dict[str, Any]
+
+
+def extract_tool_calls(content: str) -> list[ParsedToolCall]:
+    """
+    Extract tool calls from response content.
+
+    Detects formats:
+    1. TOOL_CALL: name({"arg": "val"})
+    2. <tool_call name="name">{"arg": "val"}</tool_call>
+
+    Args:
+        content: Raw response string
+
+    Returns:
+        List of parsed tool calls (empty if none found)
+    """
+    calls: list[ParsedToolCall] = []
+
+    # Pattern 1: TOOL_CALL: name({...})
+    pattern1 = r'TOOL_CALL:\s*(\w+)\((\{.*?\})\)'
+    for match in re.finditer(pattern1, content, re.DOTALL):
+        name = match.group(1)
+        args_str = match.group(2)
+        args = _try_parse_json(args_str)
+        if args is not None:
+            calls.append(ParsedToolCall(name=name, args=args))
+
+    # Pattern 2: <tool_call name="name">{...}</tool_call>
+    pattern2 = r'<tool_call\s+name="(\w+)">(.*?)</tool_call>'
+    for match in re.finditer(pattern2, content, re.DOTALL):
+        name = match.group(1)
+        args_str = match.group(2).strip()
+        args = _try_parse_json(args_str)
+        if args is not None:
+            calls.append(ParsedToolCall(name=name, args=args))
+
+    return calls
