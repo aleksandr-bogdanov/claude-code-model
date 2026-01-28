@@ -34,7 +34,7 @@ jobs:
       url: ${{ github.event_name == 'release' && 'https://pypi.org/project/claude-code-model/' || (inputs.test_pypi && 'https://test.pypi.org/project/claude-code-model/' || 'https://pypi.org/project/claude-code-model/') }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
