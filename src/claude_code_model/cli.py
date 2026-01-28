@@ -1,6 +1,8 @@
 """CLI wrapper for Claude Code."""
 from __future__ import annotations
 
+import asyncio
+from asyncio import subprocess as async_subprocess
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -62,3 +64,56 @@ class ClaudeCodeCLI:
                 "Install with: npm install -g @anthropic-ai/claude-code"
             )
         self._executable = Path(claude_path)
+
+    async def run(self, prompt: str) -> CLIResult:
+        """
+        Execute claude CLI with prompt and return result.
+
+        Args:
+            prompt: The prompt to send to Claude
+
+        Returns:
+            CLIResult with stdout, stderr, exit_code
+
+        Raises:
+            ClaudeCodeTimeoutError: If command times out
+            ClaudeCodeExecutionError: If command exits with non-zero code
+        """
+        cmd = [
+            str(self._executable),
+            "-p",
+            prompt,
+            "--model",
+            self.model,
+        ]
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=async_subprocess.PIPE,
+                stderr=async_subprocess.PIPE,
+                cwd=self.cwd,
+            )
+
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=self.timeout,
+            )
+        except asyncio.TimeoutError as e:
+            raise ClaudeCodeTimeoutError(
+                f"CLI timeout after {self.timeout} seconds"
+            ) from e
+
+        stdout = stdout_bytes.decode() if stdout_bytes else ""
+        stderr = stderr_bytes.decode() if stderr_bytes else ""
+
+        if proc.returncode != 0:
+            raise ClaudeCodeExecutionError(
+                f"CLI exited with code {proc.returncode}: {stderr}"
+            )
+
+        return CLIResult(
+            stdout=stdout,
+            stderr=stderr,
+            exit_code=proc.returncode or 0,
+        )

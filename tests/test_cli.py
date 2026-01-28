@@ -1,10 +1,11 @@
 """Tests for CLI wrapper."""
 from __future__ import annotations
 
+import asyncio
 import pytest
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from claude_code_model.cli import (
     CLIResult,
@@ -106,3 +107,117 @@ class TestClaudeCodeCLIInit:
         with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
             cli = ClaudeCodeCLI(cwd=Path("/tmp/project"))
             assert cli.cwd == Path("/tmp/project")
+
+
+class TestClaudeCodeCLIRun:
+    """Test ClaudeCodeCLI.run() async method."""
+
+    @pytest.fixture
+    def cli(self) -> ClaudeCodeCLI:
+        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+            return ClaudeCodeCLI()
+
+    @pytest.mark.asyncio
+    async def test_successful_run_returns_result(self, cli: ClaudeCodeCLI) -> None:
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (b'{"status": "ok"}', b'')
+        mock_proc.returncode = 0
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            result = await cli.run("test prompt")
+
+        assert result.stdout == '{"status": "ok"}'
+        assert result.stderr == ""
+        assert result.exit_code == 0
+        assert result.success is True
+
+    @pytest.mark.asyncio
+    async def test_command_includes_prompt(self, cli: ClaudeCodeCLI) -> None:
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (b'out', b'')
+        mock_proc.returncode = 0
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
+            await cli.run("my prompt")
+
+        args = mock_exec.call_args[0]
+        assert "-p" in args
+        assert "my prompt" in args
+
+    @pytest.mark.asyncio
+    async def test_command_includes_model_flag(self, cli: ClaudeCodeCLI) -> None:
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (b'out', b'')
+        mock_proc.returncode = 0
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
+            await cli.run("test")
+
+        args = mock_exec.call_args[0]
+        assert "--model" in args
+        assert "sonnet" in args
+
+    @pytest.mark.asyncio
+    async def test_custom_model_in_command(self) -> None:
+        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+            cli = ClaudeCodeCLI(model="opus")
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (b'out', b'')
+        mock_proc.returncode = 0
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
+            await cli.run("test")
+
+        args = mock_exec.call_args[0]
+        assert "opus" in args
+
+    @pytest.mark.asyncio
+    async def test_timeout_raises_exception(self, cli: ClaudeCodeCLI) -> None:
+        mock_proc = AsyncMock()
+        mock_proc.communicate.side_effect = asyncio.TimeoutError()
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            with pytest.raises(ClaudeCodeTimeoutError) as exc_info:
+                await cli.run("test")
+        assert "timeout" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_nonzero_exit_raises_exception(self, cli: ClaudeCodeCLI) -> None:
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (b'', b'error occurred')
+        mock_proc.returncode = 1
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            with pytest.raises(ClaudeCodeExecutionError) as exc_info:
+                await cli.run("test")
+        assert "error occurred" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_cwd_passed_to_subprocess(self) -> None:
+        with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
+            cli = ClaudeCodeCLI(cwd=Path("/tmp/project"))
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (b'out', b'')
+        mock_proc.returncode = 0
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
+            await cli.run("test")
+
+        kwargs = mock_exec.call_args[1]
+        assert kwargs["cwd"] == Path("/tmp/project")
+
+    @pytest.mark.asyncio
+    async def test_uses_pipe_for_stdout_stderr(self, cli: ClaudeCodeCLI) -> None:
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (b'out', b'')
+        mock_proc.returncode = 0
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
+            await cli.run("test")
+
+        kwargs = mock_exec.call_args[1]
+        import asyncio.subprocess
+        assert kwargs["stdout"] == asyncio.subprocess.PIPE
+        assert kwargs["stderr"] == asyncio.subprocess.PIPE
