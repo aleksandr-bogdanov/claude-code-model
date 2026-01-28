@@ -100,7 +100,7 @@ def main() -> None:
                 continue
 
             result = agent.run_sync(query)
-            print(f"\nAssistant: {result.data}\n")
+            print(f"\nAssistant: {result.output}\n")
 
         except KeyboardInterrupt:
             print("\nGoodbye!")

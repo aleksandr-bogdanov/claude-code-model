@@ -39,7 +39,7 @@ class AnalysisResult(BaseModel):
 # Fast agent for quick research tasks (uses haiku)
 researcher: Agent[None, ResearchResult] = Agent(
     ClaudeCodeModel(model="haiku"),
-    result_type=ResearchResult,
+    output_type=ResearchResult,
     system_prompt=(
         "You are a research assistant. When given a topic, provide "
         "key points and a brief summary. Be factual and concise."
@@ -49,7 +49,7 @@ researcher: Agent[None, ResearchResult] = Agent(
 # Powerful agent for complex analysis (uses sonnet)
 analyst: Agent[None, AnalysisResult] = Agent(
     ClaudeCodeModel(model="sonnet"),
-    result_type=AnalysisResult,
+    output_type=AnalysisResult,
     system_prompt=(
         "You are a senior analyst. Analyze research findings and provide "
         "actionable recommendations. Consider multiple perspectives."
@@ -70,10 +70,10 @@ async def research_topic(topic: str) -> str:
     """
     result = await researcher.run(f"Research this topic: {topic}")
     return (
-        f"Research on '{result.data.topic}':\n"
+        f"Research on '{result.output.topic}':\n"
         f"Key Points:\n" +
-        "\n".join(f"- {p}" for p in result.data.key_points) +
-        f"\n\nSummary: {result.data.summary}"
+        "\n".join(f"- {p}" for p in result.output.key_points) +
+        f"\n\nSummary: {result.output.summary}"
     )
 
 
@@ -100,10 +100,10 @@ async def main() -> None:
     print("=" * 40)
     print("ANALYSIS RESULT")
     print("=" * 40)
-    print(f"\nConclusion: {result.data.conclusion}")
-    print(f"\nConfidence: {result.data.confidence}")
+    print(f"\nConclusion: {result.output.conclusion}")
+    print(f"\nConfidence: {result.output.confidence}")
     print("\nRecommendations:")
-    for i, rec in enumerate(result.data.recommendations, 1):
+    for i, rec in enumerate(result.output.recommendations, 1):
         print(f"  {i}. {rec}")
 
 

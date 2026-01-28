@@ -1,0 +1,70 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+  # Allow manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      test_pypi:
+        description: 'Publish to TestPyPI instead of PyPI'
+        required: false
+        default: 'true'
+        type: boolean
+
+jobs:
+  # Run full CI before publishing
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Publish Package
+    needs: [ci]
+    runs-on: ubuntu-latest
+
+    # Required for trusted publishing (OIDC)
+    permissions:
+      id-token: write
+      contents: read
+
+    environment:
+      name: ${{ github.event_name == 'release' && 'pypi' || (inputs.test_pypi && 'testpypi' || 'pypi') }}
+      url: ${{ github.event_name == 'release' && 'https://pypi.org/project/claude-code-model/' || (inputs.test_pypi && 'https://test.pypi.org/project/claude-code-model/' || 'https://pypi.org/project/claude-code-model/') }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Build package
+        run: uv build
+
+      - name: Verify version matches tag
+        if: github.event_name == 'release'
+        run: |
+          PKG_VERSION=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$PKG_VERSION" != "$TAG_VERSION" ]]; then
+            echo "Error: Package version ($PKG_VERSION) does not match tag version ($TAG_VERSION)"
+            echo "Please update the version in pyproject.toml to match the release tag"
+            exit 1
+          fi
+          echo "Version verified: $PKG_VERSION"
+
+      - name: Publish to TestPyPI
+        if: github.event_name == 'workflow_dispatch' && inputs.test_pypi
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+      - name: Publish to PyPI
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && !inputs.test_pypi)
+        uses: pypa/gh-action-pypi-publish@release/v1

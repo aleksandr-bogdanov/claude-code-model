@@ -340,8 +340,8 @@ class ClaudeCodeAgentModel:
 
     cli: ClaudeCodeCLI
     function_tools: list[ToolDefinition] = field(default_factory=list)
-    allow_text_result: bool = True
-    result_tools: list[ToolDefinition] = field(default_factory=list)
+    allow_text_output: bool = True
+    output_tools: list[ToolDefinition] = field(default_factory=list)
 
     def _build_prompt(self, messages: list[ModelMessage]) -> str:
         """Convert Pydantic AI messages to prompt string."""
@@ -388,8 +388,8 @@ class ClaudeCodeAgentModel:
             tools_text = self._format_tools(self.function_tools)
             sections.append("## Available Tools\n" + tools_text)
 
-        if self.result_tools:
-            schema_text = self._format_result_schema(self.result_tools)
+        if self.output_tools:
+            schema_text = self._format_output_schema(self.output_tools)
             sections.append("## Required Output Format\n" + schema_text)
 
         if conversation_parts:
@@ -408,9 +408,9 @@ class ClaudeCodeAgentModel:
             lines.append("")
         return "\n".join(lines)
 
-    def _format_result_schema(self, tools: list[ToolDefinition]) -> str:
-        """Format result schema for prompt."""
+    def _format_output_schema(self, tools: list[ToolDefinition]) -> str:
+        """Format output schema for prompt."""
         if not tools:
             return ""
-        tool = tools[0]  # Use first result tool
+        tool = tools[0]  # Use first output tool
         return f"Return JSON matching this schema:\n{json.dumps(tool.parameters_json_schema, indent=2)}"

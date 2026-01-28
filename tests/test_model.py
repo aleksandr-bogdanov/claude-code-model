@@ -230,8 +230,8 @@ class TestBuildPrompt:
         return ClaudeCodeAgentModel(
             cli=cli,
             function_tools=[],
-            allow_text_result=True,
-            result_tools=[],
+            allow_text_output=True,
+            output_tools=[],
         )
 
     def test_system_prompt_in_instructions(
@@ -320,8 +320,8 @@ class TestBuildPrompt:
         agent_model = ClaudeCodeAgentModel(
             cli=cli,
             function_tools=[tool],
-            allow_text_result=True,
-            result_tools=[],
+            allow_text_output=True,
+            output_tools=[],
         )
         messages = [ModelRequest(parts=[UserPromptPart(content="Find files")])]
         prompt = agent_model._build_prompt(messages)
@@ -335,9 +335,9 @@ class TestBuildPrompt:
 
         with patch("claude_code_model.cli.shutil.which", return_value="/usr/bin/claude"):
             cli = ClaudeCodeCLI()
-        result_tool = ToolDefinition(
+        output_tool = ToolDefinition(
             name="final_result",
-            description="Return structured result",
+            description="Return structured output",
             parameters_json_schema={
                 "type": "object",
                 "properties": {"answer": {"type": "string"}},
@@ -346,8 +346,8 @@ class TestBuildPrompt:
         agent_model = ClaudeCodeAgentModel(
             cli=cli,
             function_tools=[],
-            allow_text_result=False,
-            result_tools=[result_tool],
+            allow_text_output=False,
+            output_tools=[output_tool],
         )
         messages = [ModelRequest(parts=[UserPromptPart(content="Analyze")])]
         prompt = agent_model._build_prompt(messages)
