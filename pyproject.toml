@@ -4,9 +4,9 @@ version = "0.2.0"
 description = "Pydantic AI model adapter for Claude Code CLI"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
-    {name = "Aleksandr Bogdanov", email = "aleksandr.bogdanov@example.com"},
+    {name = "Alex Bogdanov", email = "alex@bogdanov.wtf"},
 ]
 keywords = ["claude", "pydantic-ai", "llm", "agent", "anthropic", "claude-code"]
 classifiers = [
