@@ -24,7 +24,7 @@ def main() -> None:
     """Run the example."""
     # Create agent with structured output
     agent: Agent[None, ReviewResult] = Agent(
-        ClaudeCodeModel(),
+        ClaudeCodeModel(verbose=True),
         output_type=ReviewResult,
         system_prompt=(
             "You are a code reviewer. Analyze code and return your review "

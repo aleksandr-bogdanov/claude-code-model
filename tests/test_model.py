@@ -42,7 +42,7 @@ class TestClaudeCodeModel:
         assert model.system == "claude-code"
 
     def test_default_timeout(self, model: ClaudeCodeModel) -> None:
-        assert model.timeout == 300
+        assert model.timeout == 30
 
     def test_custom_timeout(self) -> None:
         with patch(
