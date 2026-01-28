@@ -105,10 +105,11 @@ jobs:
       - name: Build package
         run: uv build
 
-      - name: Check package
+      - name: Check package is installable
         run: |
-          pip install 'twine<6'
-          twine check dist/*
+          uv venv /tmp/test-install
+          VIRTUAL_ENV=/tmp/test-install uv pip install dist/*.whl
+          /tmp/test-install/bin/python -c "from claude_code_model import ClaudeCodeModel; print('Import successful')"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
