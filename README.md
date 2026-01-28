@@ -1,64 +1,85 @@
 # claude-code-model
 
-**Pydantic AI model adapter for Claude Code CLI — type-safe agents on your Max subscription.**
+**Use Pydantic AI with your Claude Max subscription instead of paying per token.**
 
-Use Pydantic AI's powerful agent framework with Claude Code CLI instead of API calls. Get structured outputs, tool calling, and full type safety without per-token costs.
+A drop-in replacement that routes Pydantic AI through Claude Code CLI. Same code, same features, zero API costs.
 
-## Why Use This?
+## The Problem
 
-| Approach | Cost | Type Safety | Structured Output | Tool Calling |
-|----------|------|-------------|-------------------|--------------|
-| Raw `claude -p` | $0 | ❌ | ❌ | ❌ |
-| Pydantic AI + API | $$$ per token | ✅ | ✅ | ✅ |
-| **claude-code-model** | $0 | ✅ | ✅ | ✅ |
+You want to use [Pydantic AI](https://ai.pydantic.dev/) for type-safe AI agents, but the API costs add up:
 
-If you have a Claude Max subscription ($100-200/month), you get unlimited Claude access via CLI. This adapter lets you use that access with Pydantic AI's excellent developer experience.
+```python
+# This costs $3-15 per 1M tokens
+from pydantic_ai.models.anthropic import AnthropicModel
+model = AnthropicModel("claude-sonnet-4-20250514")
+```
+
+Meanwhile, your Claude Max subscription ($100-200/month) gives you **unlimited** Claude access via CLI, but no programmatic interface for building agents.
+
+## The Solution
+
+`claude-code-model` bridges this gap. Change 2 lines and your Pydantic AI code runs on your Max subscription:
+
+```diff
+- from pydantic_ai.models.anthropic import AnthropicModel
+- model = AnthropicModel("claude-sonnet-4-20250514")
++ from claude_code_model import ClaudeCodeModel
++ model = ClaudeCodeModel(model="sonnet")
+```
+
+**That's it.** Your agents, tools, schemas, and prompts stay exactly the same.
+
+## Quick Comparison
+
+| Feature | Pydantic AI + API | claude-code-model |
+|---------|-------------------|-------------------|
+| Cost | $3-15/M tokens | $0 (Max subscription) |
+| Structured output | Yes | Yes |
+| Tool calling | Yes | Yes |
+| Type safety | Yes | Yes |
+| Streaming | Yes | No |
+| Concurrent requests | Yes | No |
+| Migration effort | — | **2 lines** |
 
 ## Installation
 
 ```bash
-# 1. Install Claude Code CLI (if not already installed)
+# 1. Install Claude Code CLI (requires Node.js)
 npm install -g @anthropic-ai/claude-code
 
-# 2. Authenticate
+# 2. Login to Claude
 claude auth
 
 # 3. Install this package
 pip install claude-code-model
 ```
 
-## Quick Start
+## Usage
 
-### Structured Output
-
-Get type-safe responses with automatic validation:
+### Basic Example
 
 ```python
 from pydantic import BaseModel
 from pydantic_ai import Agent
 from claude_code_model import ClaudeCodeModel
 
-class ReviewResult(BaseModel):
-    verdict: str  # APPROVE, REQUEST_CHANGES, COMMENT
-    issues: list[str]
-    suggestions: list[str]
+class MovieReview(BaseModel):
+    title: str
+    rating: int  # 1-10
+    summary: str
 
 agent = Agent(
     ClaudeCodeModel(),
-    result_type=ReviewResult,
-    system_prompt="You are a code reviewer. Return structured JSON."
+    output_type=MovieReview,
+    system_prompt="You are a film critic. Review movies concisely."
 )
 
-result = agent.run_sync("Review this code: def add(a,b): return a+b")
-
-# Result is fully typed!
-print(result.data.verdict)  # IDE autocomplete works
-print(result.data.issues)   # Type checking works
+result = agent.run_sync("Review: The Matrix (1999)")
+print(f"{result.output.title}: {result.output.rating}/10")
+# The Matrix: 9/10
 ```
 
-### Tool Calling
-
-Give your agent functions it can call:
+### With Tools
 
 ```python
 from pydantic_ai import Agent
@@ -67,223 +88,185 @@ from claude_code_model import ClaudeCodeModel
 agent = Agent(ClaudeCodeModel())
 
 @agent.tool_plain
-def read_file(path: str) -> str:
-    """Read a file from disk."""
-    return Path(path).read_text()
+def get_weather(city: str) -> str:
+    """Get current weather for a city."""
+    # Your implementation here
+    return f"Weather in {city}: 72°F, sunny"
 
-@agent.tool_plain
-def list_files(directory: str = ".") -> list[str]:
-    """List files in a directory."""
-    return [f.name for f in Path(directory).iterdir()]
-
-result = agent.run_sync("What Python files are in the current directory?")
-# Agent automatically calls list_files() and uses the results
+result = agent.run_sync("What's the weather in Tokyo?")
+# Agent calls get_weather("Tokyo") and uses the result
 ```
 
 ### Multi-Agent Systems
 
-Different models for different tasks:
-
 ```python
+from pydantic_ai import Agent
 from claude_code_model import ClaudeCodeModel
 
-# Fast agent for quick tasks
-researcher = Agent(
+# Fast agent for simple tasks
+fast_agent = Agent(
     ClaudeCodeModel(model="haiku"),
-    system_prompt="Quick research"
+    system_prompt="Quick factual responses only."
 )
 
-# Powerful agent for analysis
-analyst = Agent(
+# Powerful agent for complex reasoning
+smart_agent = Agent(
     ClaudeCodeModel(model="sonnet"),
-    system_prompt="Deep analysis"
+    system_prompt="Deep analysis and reasoning."
 )
 
-# Analyst can delegate to researcher
-@analyst.tool_plain
-async def research(topic: str) -> str:
-    result = await researcher.run(f"Research {topic}")
-    return result.data
+# Agents can delegate to each other via tools
+@smart_agent.tool_plain
+async def quick_lookup(query: str) -> str:
+    """Delegate simple lookups to the fast agent."""
+    result = await fast_agent.run(query)
+    return result.output
 ```
 
-## Features
+See [`examples/multi_agent_comparison.py`](examples/multi_agent_comparison.py) for a complete multi-agent pipeline.
 
-- **Zero API Costs**: Uses your Claude Max subscription
-- **Full Pydantic AI Compatibility**: Structured outputs, tools, deps, async
-- **Type Safety**: Full IDE autocomplete and type checking
-- **Multiple Models**: sonnet (default), opus, haiku
-- **Tool Calling**: Give agents functions to call
-- **Async Support**: Full async/await support
-- **Simple**: <500 lines of code, easy to audit
+## Migration from Pydantic AI
+
+### Step 1: Install
+
+```bash
+pip install claude-code-model
+```
+
+### Step 2: Replace Import
+
+```python
+# Before
+from pydantic_ai.models.anthropic import AnthropicModel
+
+# After
+from claude_code_model import ClaudeCodeModel
+```
+
+### Step 3: Replace Model
+
+```python
+# Before
+model = AnthropicModel("claude-sonnet-4-20250514")
+
+# After
+model = ClaudeCodeModel(model="sonnet")  # or "opus", "haiku"
+```
+
+### That's It
+
+All your existing code works unchanged:
+
+```python
+# This code is IDENTICAL for both API and CLI
+agent = Agent(
+    model,  # <-- Only this changes
+    output_type=MySchema,
+    system_prompt="Your prompt here",
+    retries=3,
+)
+
+@agent.tool_plain
+def my_tool(arg: str) -> str:
+    return do_something(arg)
+
+result = agent.run_sync("Your query")
+print(result.output)  # Typed result
+```
 
 ## Configuration
 
 ```python
 from claude_code_model import ClaudeCodeModel
-from pathlib import Path
 
 model = ClaudeCodeModel(
-    model="sonnet",      # "sonnet" | "opus" | "haiku"
-    timeout=30,          # seconds per CLI request (default: 30)
-    cwd=Path("/path"),   # working directory for CLI
-    verbose=False,       # enable debug logging
+    model="sonnet",    # "sonnet" (default), "opus", or "haiku"
+    timeout=30,        # Seconds per CLI request (default: 30)
+    verbose=False,     # Enable debug logging
 )
 ```
 
-### Debug Mode
+### Model Selection
 
-Enable verbose logging to see exactly what's happening:
+| Model | Speed | Capability | Use Case |
+|-------|-------|------------|----------|
+| `haiku` | Fast | Good | Simple tasks, quick lookups |
+| `sonnet` | Medium | Great | Most tasks (default) |
+| `opus` | Slow | Best | Complex reasoning, analysis |
+
+### Debug Mode
 
 ```python
 model = ClaudeCodeModel(verbose=True)
 ```
 
-This shows:
-- Request/response timing (e.g., `CLAUDE CLI RESPONSE (took 3.7s)`)
-- Full prompts being sent
-- Tool calls detected
-- JSON extraction status
-- Request count and total time
-
-## Examples
-
-The `examples/` directory contains working examples:
-
-- **`simple.py`**: Structured output for code review
-- **`with_tools.py`**: File system tools with interactive chat
-- **`multi_agent.py`**: Multi-agent delegation pattern
-
-Run them:
-
-```bash
-uv run python examples/simple.py
-uv run python examples/with_tools.py
-```
+Shows request/response timing, prompts sent, tool calls detected, and JSON extraction status.
 
 ## How It Works
 
 ```
-┌─────────────────────────────────────────┐
-│  Your Code                              │
-│  agent = Agent(ClaudeCodeModel())       │
-│  result = agent.run_sync("prompt")      │
-└──────────────┬──────────────────────────┘
-               │
-               ▼
-┌─────────────────────────────────────────┐
-│  Pydantic AI                            │
-│  - Manages conversation state           │
-│  - Handles tool calls and retries       │
-│  - Validates output against schema      │
-└──────────────┬──────────────────────────┘
-               │
-               ▼
-┌─────────────────────────────────────────┐
-│  claude-code-model                      │
-│  - Converts messages → prompt string    │
-│  - Adds JSON schema instructions        │
-│  - Calls CLI wrapper                    │
-│  - Parses response → ModelResponse      │
-└──────────────┬──────────────────────────┘
-               │
-               ▼
-┌─────────────────────────────────────────┐
-│  Claude Code CLI                        │
-│  $ claude -p "prompt" --model sonnet    │
-│  > {"verdict": "APPROVE", "issues": []} │
-└─────────────────────────────────────────┘
+Your Code                      claude-code-model              Claude CLI
+─────────────────────────────────────────────────────────────────────────
+agent.run_sync("prompt")  →   Build prompt string      →   claude -p "..."
+                              Add tool definitions          --model sonnet
+                              Add JSON schema
+
+result.output             ←   Parse response           ←   {"rating": 9, ...}
+                              Extract JSON
+                              Validate with Pydantic
 ```
 
-The adapter translates between Pydantic AI's message format and Claude CLI's prompt-response model. It handles:
+The adapter:
+1. Converts Pydantic AI messages → single prompt string
+2. Adds tool definitions with format instructions
+3. Adds JSON schema requirements for structured output
+4. Calls `claude -p "prompt" --model sonnet` via subprocess
+5. Parses response for tool calls or JSON output
+6. Returns typed `ModelResponse` to Pydantic AI
 
-- System prompts, user messages, tool calls, tool results
-- JSON extraction from various response formats
-- Tool call detection and parsing
-- Structured output validation
+## Examples
 
-## API Reference
+Run the examples to see it in action:
 
-### ClaudeCodeModel
+```bash
+# Basic structured output
+uv run python examples/simple.py
 
-Main model class implementing Pydantic AI's `Model` interface.
+# Interactive tool usage
+uv run python examples/with_tools.py
 
-```python
-@dataclass
-class ClaudeCodeModel(Model):
-    model: Literal["sonnet", "opus", "haiku"] = "sonnet"
-    timeout: int = 30       # seconds per request
-    cwd: Path | None = None
-    verbose: bool = False   # enable debug logging
+# Multi-agent pipeline with comparison
+uv run python examples/multi_agent_comparison.py
 ```
 
-**Properties** (read-only, for monitoring):
-- `request_count: int` - Number of CLI requests made
-- `total_time: float` - Total seconds spent in CLI requests
+## Limitations
 
-**Methods**:
-- `reset_stats()` - Reset request_count and total_time to zero
+**No streaming** — CLI doesn't support streaming well. Each request returns complete.
 
-### Exceptions
+**No concurrent requests** — Run one request at a time. CLI sessions don't parallelize.
+
+**No token counting** — CLI doesn't report token usage. `result.usage` returns zeros.
+
+**No images** — Text-only. CLI doesn't support image inputs.
+
+**Slower than API** — Each CLI invocation takes 2-10 seconds overhead. Multi-step tasks with tool calls take longer.
+
+**Tool calling is prompt-based** — Unlike native API tools, this adapter instructs Claude to output `TOOL_CALL: name({args})` format. Works well but occasionally needs retries. Use `retries=3-5` on your agents.
+
+## Exceptions
 
 ```python
 from claude_code_model import (
     ClaudeCodeError,           # Base exception
     ClaudeCodeNotFoundError,   # CLI not installed
-    ClaudeCodeTimeoutError,    # Command timed out
-    ClaudeCodeExecutionError,  # Non-zero exit code
+    ClaudeCodeTimeoutError,    # Request timed out
+    ClaudeCodeExecutionError,  # CLI returned error
 )
 ```
-
-## Limitations
-
-- **No streaming**: CLI doesn't support streaming well
-- **No token counting**: CLI doesn't report usage (returns 0)
-- **No concurrent calls**: Run one request at a time
-- **Text-only**: No image inputs (CLI limitation)
-- **Rate limits**: Subject to Claude Max rate limits
-
-## Known Behaviors
-
-### Tool Calling is Prompt-Based
-
-Unlike the API, Claude CLI doesn't have native tool calling. This adapter simulates tools by:
-
-1. Including tool definitions in the prompt with format instructions
-2. Asking Claude to output `TOOL_CALL: name({"arg": "value"})`
-3. Parsing the response for this pattern
-
-This works well but Claude occasionally:
-- Ignores tools and answers directly
-- Outputs the tool call but continues talking
-- Returns placeholder JSON instead of real content
-
-**Mitigation**: Use `retries=5` on your Agent to handle occasional misbehavior:
-
-```python
-agent = Agent(
-    ClaudeCodeModel(),
-    output_type=MyResult,
-    retries=5,  # Allow retries for output validation
-)
-```
-
-### Response Timing
-
-Each CLI invocation takes 2-10 seconds depending on:
-- Model (haiku is fastest, opus slowest)
-- Prompt length
-- Claude's current load
-
-Multi-agent workflows with tool calls require multiple CLI invocations, so expect 15-30+ seconds for complex tasks.
-
-### IDE Compatibility
-
-The adapter works in both terminal and IDE environments. It uses `stdin=DEVNULL` to prevent hangs when running without a TTY (common in IDEs like PyCharm).
 
 ## Development
 
 ```bash
-# Setup
 git clone https://github.com/yourusername/claude-code-model.git
 cd claude-code-model
 uv sync
@@ -291,18 +274,11 @@ uv sync
 # Run tests
 uv run pytest
 
-# Run tests with coverage
-uv run pytest --cov=claude_code_model
-
 # Type check
 uv run mypy src/
 
 # Lint
 uv run ruff check src/ tests/
-uv run ruff format src/ tests/
-
-# Run example
-uv run python examples/simple.py
 ```
 
 ## Requirements
@@ -313,33 +289,16 @@ uv run python examples/simple.py
 - pydantic-ai >= 0.1.0
 - pydantic >= 2.0.0
 
-## Contributing
-
-Contributions welcome! Please:
-
-1. Keep changes focused and small (<200 lines)
-2. Add tests for new functionality
-3. Ensure `pytest`, `mypy`, and `ruff` all pass
-4. Update README if adding features
-
-See [CLAUDE.md](CLAUDE.md) for development guide.
-
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE).
 
-## Credits
+## Links
 
-Built with:
-- [Pydantic AI](https://ai.pydantic.dev/) - The agent framework
-- [Claude Code](https://claude.ai/claude-code) - Anthropic's CLI tool
-- [Pydantic](https://docs.pydantic.dev/) - Data validation
+- [Pydantic AI Documentation](https://ai.pydantic.dev/)
+- [Claude Code](https://claude.ai/claude-code)
+- [Development Guide](CLAUDE.md)
 
-## Disclaimer
+---
 
-This is an unofficial adapter, not affiliated with Anthropic. Use in accordance with Claude's [Terms of Service](https://www.anthropic.com/legal/consumer-terms). You are responsible for ensuring your usage complies with Anthropic's policies.
-
-## Support
-
-- Issues: [GitHub Issues](https://github.com/yourusername/claude-code-model/issues)
-- Dev Guide: [CLAUDE.md](CLAUDE.md) for contributors
+**Disclaimer**: Unofficial adapter, not affiliated with Anthropic. Use in accordance with Claude's [Terms of Service](https://www.anthropic.com/legal/consumer-terms).
